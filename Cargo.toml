@@ -1,0 +1,15 @@
+[package]
+name = "iroh-tcp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bincode = "2.0.1"
+iroh = "0.91.0"
+tokio = { version = "1.47.1", features = ["full"] }
+tracing = "0.1.41"
+
+[dev-dependencies]
+axum = "0.8.4"
+rand = "0.8.5"
+reqwest = "0.12.22"
