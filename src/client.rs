@@ -2,10 +2,7 @@ use iroh::{
     Endpoint, NodeAddr, NodeId,
     endpoint::{RecvStream, SendStream},
 };
-use tokio::{
-    net::{TcpListener, TcpStream},
-    sync::{mpsc, oneshot},
-};
+use tokio::net::{TcpListener, TcpStream};
 
 use crate::{ALPN, Address, Either, Error, TunnelRequest, TunnelResponse, net};
 
@@ -61,16 +58,9 @@ impl Client {
             return Err(Error::TunnelConnectionFailed);
         }
 
-        let (data_tx, data_rx) = mpsc::unbounded_channel();
-        let (signal_tx, signal_rx) = oneshot::channel();
-
-        let out = tokio::spawn(net::out(rx, data_tx, signal_rx));
-        let into = tokio::spawn(net::into(stream, data_rx, tx, signal_tx));
-
-        out.await.unwrap()?;
-        into.await.unwrap()?;
-
+        net::bridge(stream, rx, tx).await?;
         conn.close(0u32.into(), b"bye");
+
         Ok(())
     }
 

@@ -5,10 +5,7 @@ use iroh::{
     endpoint::{Connection, RecvStream, SendStream},
     protocol::{AcceptError, ProtocolHandler},
 };
-use tokio::{
-    net::TcpStream,
-    sync::{mpsc, oneshot},
-};
+use tokio::net::TcpStream;
 
 use crate::{AllowList, Error, TunnelRequest, TunnelResponse, net};
 
@@ -96,14 +93,9 @@ impl<A: NodeAuth + Send + Sync + 'static> ProtocolHandler for Proxy<A> {
                     .await
                     .map_err(AcceptError::from_err)?;
 
-                let (data_tx, data_rx) = mpsc::unbounded_channel();
-                let (signal_tx, signal_rx) = oneshot::channel();
-
-                let out = tokio::spawn(net::out(rx, data_tx, signal_rx));
-                let into = tokio::spawn(net::into(stream, data_rx, tx, signal_tx));
-
-                out.await.unwrap().map_err(AcceptError::from_err)?;
-                into.await.unwrap().map_err(AcceptError::from_err)?;
+                net::bridge(stream, rx, tx)
+                    .await
+                    .map_err(AcceptError::from_err)?;
             }
         }
 

@@ -10,6 +10,7 @@ pub enum Error {
     DecodeError(bincode::error::DecodeError),
     EncodeError(bincode::error::EncodeError),
     IoError(std::io::Error),
+    TaskJoinError(tokio::task::JoinError),
     TunnelConnectionFailed,
 }
 
@@ -26,6 +27,7 @@ impl std::fmt::Display for Error {
             Self::DecodeError(e) => write!(f, "DecodeError: {:?}", e),
             Self::EncodeError(e) => write!(f, "EncodeError: {:?}", e),
             Self::IoError(e) => write!(f, "IoError: {:?}", e),
+            Self::TaskJoinError(e) => write!(f, "TaskJoinError: {:?}", e),
             Self::TunnelConnectionFailed => write!(f, "TunnelConnectionFailed"),
         }
     }
@@ -90,5 +92,11 @@ impl From<bincode::error::EncodeError> for Error {
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Self::IoError(value)
+    }
+}
+
+impl From<tokio::task::JoinError> for Error {
+    fn from(value: tokio::task::JoinError) -> Self {
+        Self::TaskJoinError(value)
     }
 }

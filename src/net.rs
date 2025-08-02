@@ -2,12 +2,10 @@ use iroh::endpoint::{RecvStream, SendStream};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    sync::{mpsc, oneshot},
+    task::JoinHandle,
 };
 
 use crate::Error;
-
-const READ_CHUNK_SIZE: usize = 1_000_000;
 
 pub async fn read_frame(rx: &mut RecvStream) -> Result<Vec<u8>, Error> {
     let frame_size = rx.read_u16_le().await?;
@@ -23,89 +21,21 @@ pub async fn write_frame(tx: &mut SendStream, frame: Vec<u8>) -> Result<(), Erro
     Ok(())
 }
 
-pub async fn out(
-    rx: RecvStream,
-    tx: mpsc::UnboundedSender<Option<Vec<u8>>>,
-    signal: oneshot::Receiver<()>,
-) -> Result<(), Error> {
-    let mut rx = rx;
-    let mut signal = signal;
-
-    let forwarder = async move {
-        let mut buf = vec![0u8; READ_CHUNK_SIZE];
-        loop {
-            match rx.read(&mut buf).await? {
-                None => {
-                    tx.send(None).unwrap();
-                    break;
-                }
-                Some(n) => {
-                    tx.send(Some(buf[0..n].to_vec())).unwrap();
-                }
-            }
-        }
-        Ok::<(), Error>(())
-    };
-
-    tokio::select! {
-        r = forwarder => {
-            r?;
-        }
-        _ = &mut signal => {
-            ()
-        }
-    }
-
-    Ok(())
-}
-
-pub async fn into(
+pub async fn bridge(
     stream: TcpStream,
-    rx: mpsc::UnboundedReceiver<Option<Vec<u8>>>,
-    tx: SendStream,
-    signal: oneshot::Sender<()>,
+    mut rx: RecvStream,
+    mut tx: SendStream,
 ) -> Result<(), Error> {
-    let mut rx = rx;
-    let mut tx = tx;
-    let mut stream = stream;
-    let mut buf = vec![0u8; READ_CHUNK_SIZE];
-    loop {
-        let mut active = false;
+    let (mut stream_rx, mut stream_tx) = tokio::io::split(stream);
 
-        match stream.try_read(&mut buf) {
-            Ok(n) => {
-                if n > 0 {
-                    active = true;
-                    tx.write_all(&buf[0..n]).await?;
-                } else {
-                    signal.send(()).unwrap();
-                    break;
-                }
-            }
-            Err(e) => match e.kind() {
-                std::io::ErrorKind::WouldBlock => (),
-                _ => {
-                    Err(e)?;
-                }
-            },
-        }
+    let out: JoinHandle<Result<(), Error>> = tokio::spawn(async move {
+        tokio::io::copy(&mut rx, &mut stream_tx).await?;
+        Ok(())
+    });
 
-        if let Ok(data) = rx.try_recv() {
-            match data {
-                None => break,
-                Some(data) => {
-                    active = true;
-                    stream.write_all(&data).await?;
-                }
-            }
-        }
-
-        if !active {
-            tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-        }
-    }
-
+    tokio::io::copy(&mut stream_rx, &mut tx).await?;
     tx.finish()?;
+    out.await??;
 
     Ok(())
 }
