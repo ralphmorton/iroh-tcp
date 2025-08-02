@@ -1,11 +1,11 @@
 mod util;
 
-use iroh_tcp::Address;
+use iroh_tcp::{Address, AllowList};
 use util::{ClientServer, http_hello};
 
 #[tokio::test]
 async fn http_basic() {
-    let client_server = ClientServer::new().await;
+    let client_server = ClientServer::new(AllowList::All).await;
     let _http = tokio::spawn(http_hello(3002));
 
     let tunnel = tokio::spawn(async move {

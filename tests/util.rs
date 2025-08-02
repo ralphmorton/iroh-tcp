@@ -1,7 +1,5 @@
-use std::sync::{Arc, RwLock};
-
 use iroh::{Endpoint, NodeId, SecretKey, Watcher, protocol::Router};
-use iroh_tcp::{ALPN, Client, NodeAuth, Proxy};
+use iroh_tcp::{ALPN, AllowList, Client, NodeAuth, Proxy};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -9,7 +7,7 @@ use tokio::{
 
 #[allow(dead_code)]
 pub async fn tcp_echo(port: u16) {
-    let listener = TcpListener::bind(format!("localhost:{}", port))
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port))
         .await
         .unwrap();
 
@@ -42,36 +40,11 @@ pub async fn http_hello(port: u16) {
 
 struct TestAuth {
     admin: NodeId,
-    allow: Arc<RwLock<Vec<NodeId>>>,
 }
 
 impl NodeAuth for TestAuth {
     async fn allow(&self, node: NodeId) -> bool {
-        if node == self.admin {
-            return true;
-        }
-
-        self.allow.read().unwrap().iter().any(|n| n == &node)
-    }
-
-    async fn add(&self, caller: NodeId, node: NodeId) -> bool {
-        if caller != self.admin {
-            return false;
-        }
-
-        self.allow.write().unwrap().push(node);
-        true
-    }
-
-    async fn remove(&self, caller: NodeId, node: NodeId) -> bool {
-        if caller != self.admin {
-            return false;
-        }
-
-        let mut nodes = self.allow.write().unwrap();
-        let allowed = nodes.clone().into_iter().filter(|n| n != &node).collect();
-        *nodes = allowed;
-        true
+        node == self.admin
     }
 }
 
@@ -84,7 +57,7 @@ pub struct ClientServer {
 }
 
 impl ClientServer {
-    pub async fn new() -> Self {
+    pub async fn new(allow_list: AllowList) -> Self {
         let mut rng = rand::thread_rng();
         let server_sk = SecretKey::generate(&mut rng);
         let client_sk = SecretKey::generate(&mut rng);
@@ -98,11 +71,10 @@ impl ClientServer {
 
         let auth = TestAuth {
             admin: client_sk.public(),
-            allow: Arc::new(RwLock::new(vec![])),
         };
 
         let server = Router::builder(server_endpoint)
-            .accept(ALPN, Proxy::new(auth, iroh_tcp::AllowList::All))
+            .accept(ALPN, Proxy::new(auth, allow_list))
             .spawn();
 
         let server_addr = server.endpoint().node_addr().initialized().await;

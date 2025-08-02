@@ -41,7 +41,7 @@ impl Client {
             let c = self.clone();
             let address = address.clone();
             tokio::spawn(async move {
-                c.tunnel(stream, address).await.unwrap();
+                let _ = c.tunnel(stream, address).await;
             });
         }
     }

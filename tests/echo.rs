@@ -1,6 +1,6 @@
 mod util;
 
-use iroh_tcp::Address;
+use iroh_tcp::{Address, AllowList};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -9,7 +9,7 @@ use util::{ClientServer, tcp_echo};
 
 #[tokio::test]
 async fn echo() {
-    let client_server = ClientServer::new().await;
+    let client_server = ClientServer::new(AllowList::All).await;
     let _echo = tokio::spawn(tcp_echo(3002));
 
     let tunnel = tokio::spawn(async move {

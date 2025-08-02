@@ -14,8 +14,6 @@ use crate::{AllowList, Error, TunnelRequest, TunnelResponse, net};
 
 pub trait NodeAuth {
     fn allow(&self, node: NodeId) -> impl Future<Output = bool> + Send;
-    fn add(&self, caller: NodeId, node: NodeId) -> impl Future<Output = bool> + Send;
-    fn remove(&self, caller: NodeId, node: NodeId) -> impl Future<Output = bool> + Send;
 }
 
 pub struct Proxy<A: NodeAuth> {
@@ -75,6 +73,13 @@ impl<A: NodeAuth + Send + Sync + 'static> ProtocolHandler for Proxy<A> {
             .read_request(&mut rx)
             .await
             .map_err(AcceptError::from_err)?;
+
+        if let AllowList::Only(hosts) = &self.allow_list {
+            if !hosts.iter().any(|h| h == &req.address.host) {
+                tracing::warn!(req = ?req, "disallowed_host");
+                return Err(AcceptError::NotAllowed {});
+            }
+        }
 
         match self.connect(req).await {
             Err(e) => {
