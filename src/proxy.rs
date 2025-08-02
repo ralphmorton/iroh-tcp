@@ -56,6 +56,7 @@ impl<A: NodeAuth> Proxy<A> {
 }
 
 impl<A: NodeAuth + Send + Sync + 'static> ProtocolHandler for Proxy<A> {
+    #[tracing::instrument]
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let node_id = connection.remote_node_id()?;
         tracing::info!(node_id = ?node_id, "accept");
@@ -71,9 +72,11 @@ impl<A: NodeAuth + Send + Sync + 'static> ProtocolHandler for Proxy<A> {
             .await
             .map_err(AcceptError::from_err)?;
 
+        tracing::info!(req = ?req, "tunnel_request");
+
         if let AllowList::Only(hosts) = &self.allow_list {
             if !hosts.iter().any(|h| h == &req.address.host) {
-                tracing::warn!(req = ?req, "disallowed_host");
+                tracing::warn!(req = ?req, "rejecting_disallowed_host");
                 return Err(AcceptError::NotAllowed {});
             }
         }
@@ -89,6 +92,8 @@ impl<A: NodeAuth + Send + Sync + 'static> ProtocolHandler for Proxy<A> {
                 tx.finish()?;
             }
             Ok(stream) => {
+                tracing::info!(local_addr = ?stream.local_addr(), "connected");
+
                 self.write_response(&mut tx, TunnelResponse::Connected)
                     .await
                     .map_err(AcceptError::from_err)?;

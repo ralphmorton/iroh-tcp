@@ -26,6 +26,7 @@ pub async fn bridge(
     mut rx: RecvStream,
     mut tx: SendStream,
 ) -> Result<(), Error> {
+    tracing::debug!("starting bridge");
     let (mut stream_rx, mut stream_tx) = tokio::io::split(stream);
 
     let out: JoinHandle<Result<(), Error>> = tokio::spawn(async move {
@@ -36,6 +37,8 @@ pub async fn bridge(
     tokio::io::copy(&mut stream_rx, &mut tx).await?;
     tx.finish()?;
     out.await??;
+
+    tracing::debug!("bridge complete");
 
     Ok(())
 }
