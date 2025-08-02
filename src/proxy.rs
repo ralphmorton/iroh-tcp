@@ -48,8 +48,8 @@ impl<A: NodeAuth> Proxy<A> {
     }
 
     async fn connect(&self, req: TunnelRequest) -> Result<TcpStream, Error> {
-        let stream =
-            TcpStream::connect(format!("{}:{}", req.address.host, req.address.port)).await?;
+        let socket_addr = format!("{}:{}", req.address.host, req.address.port);
+        let stream = TcpStream::connect(socket_addr).await?;
 
         Ok(stream)
     }

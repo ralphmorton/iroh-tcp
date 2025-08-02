@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use iroh::{
     Endpoint, NodeAddr, NodeId,
     endpoint::{RecvStream, SendStream},
@@ -11,6 +13,17 @@ pub struct Client {
     endpoint: Endpoint,
     server: Either<NodeAddr, NodeId>,
     bincode_config: bincode::config::Configuration,
+}
+
+impl Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Client {{ endpoint: {:?}, server: {:?} }}",
+            self.endpoint, self.server
+        )?;
+        Ok(())
+    }
 }
 
 impl Client {
@@ -30,15 +43,23 @@ impl Client {
         }
     }
 
+    #[tracing::instrument]
     pub async fn listen(&self, host: &str, port: u16, address: Address) -> Result<(), Error> {
+        tracing::info!(host = host, port = port, "listen");
         let listener = TcpListener::bind(format!("{}:{}", host, port)).await?;
+        tracing::info!("listening");
+
         loop {
             let stream = listener.accept().await?.0;
+            tracing::info!(local_addr = ?stream.local_addr(), "client_connected");
 
             let c = self.clone();
             let address = address.clone();
             tokio::spawn(async move {
-                let _ = c.tunnel(stream, address).await;
+                tracing::info!("starting_tunnel");
+                if let Err(e) = c.tunnel(stream, address).await {
+                    tracing::warn!(err = ?e, "tunnel_error");
+                }
             });
         }
     }
