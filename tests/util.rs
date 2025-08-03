@@ -1,5 +1,5 @@
 use iroh::{Endpoint, NodeId, SecretKey, Watcher, protocol::Router};
-use iroh_tcp::{ALPN, AllowList, Client, NodeAuth, Proxy};
+use iroh_tcp::{ALPN, Client, NodeAuth, Proxy};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -39,12 +39,27 @@ pub async fn http_hello(port: u16) {
 }
 
 struct TestAuth {
-    admin: NodeId,
+    client: NodeId,
+    allow: Allow,
+}
+
+#[allow(dead_code)]
+#[derive(Clone)]
+pub enum Allow {
+    All,
+    Specific(Vec<(String, u16)>),
 }
 
 impl NodeAuth for TestAuth {
-    async fn allow(&self, node: NodeId) -> bool {
-        node == self.admin
+    async fn allow(&self, node: NodeId, host: &str, port: u16) -> bool {
+        if node != self.client {
+            return false;
+        }
+
+        match &self.allow {
+            Allow::All => true,
+            Allow::Specific(hosts) => hosts.iter().any(|(h, p)| h == host && *p == port),
+        }
     }
 }
 
@@ -57,7 +72,7 @@ pub struct ClientServer {
 }
 
 impl ClientServer {
-    pub async fn new(allow_list: AllowList) -> Self {
+    pub async fn new(allow: Allow) -> Self {
         let mut rng = rand::thread_rng();
         let server_sk = SecretKey::generate(&mut rng);
         let client_sk = SecretKey::generate(&mut rng);
@@ -70,11 +85,12 @@ impl ClientServer {
             .unwrap();
 
         let auth = TestAuth {
-            admin: client_sk.public(),
+            client: client_sk.public(),
+            allow,
         };
 
         let server = Router::builder(server_endpoint)
-            .accept(ALPN, Proxy::new(auth, allow_list))
+            .accept(ALPN, Proxy::new(auth))
             .spawn();
 
         let server_addr = server.endpoint().node_addr().initialized().await;

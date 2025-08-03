@@ -1,15 +1,15 @@
-use iroh_tcp::{Address, AllowList};
+use iroh_tcp::Address;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
-use util::{ClientServer, tcp_echo};
+use util::{Allow, ClientServer, tcp_echo};
 
 mod util;
 
 #[tokio::test]
 async fn allow_list() {
-    let allow_list = AllowList::Only(vec!["127.0.0.1".to_string()]);
+    let allow_list = Allow::Specific(vec![("127.0.0.1".to_string(), 3002)]);
     let _echo = tokio::spawn(tcp_echo(3002));
 
     let client_server = ClientServer::new(allow_list.clone()).await;

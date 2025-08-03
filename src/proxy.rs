@@ -7,30 +7,28 @@ use iroh::{
 };
 use tokio::net::TcpStream;
 
-use crate::{AllowList, Error, TunnelRequest, TunnelResponse, net};
+use crate::{Error, TunnelRequest, TunnelResponse, net};
 
 pub trait NodeAuth {
-    fn allow(&self, node: NodeId) -> impl Future<Output = bool> + Send;
+    fn allow(&self, node: NodeId, host: &str, port: u16) -> impl Future<Output = bool> + Send;
 }
 
 pub struct Proxy<A: NodeAuth> {
     auth: A,
-    allow_list: AllowList,
     bincode_config: bincode::config::Configuration,
 }
 
 impl<A: NodeAuth> Debug for Proxy<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Proxy {{ allow_list: {:?} }}", self.allow_list)?;
+        write!(f, "Proxy")?;
         Ok(())
     }
 }
 
 impl<A: NodeAuth> Proxy<A> {
-    pub fn new(auth: A, allow_list: AllowList) -> Self {
+    pub fn new(auth: A) -> Self {
         Self {
             auth,
-            allow_list,
             bincode_config: bincode::config::standard(),
         }
     }
@@ -60,10 +58,6 @@ impl<A: NodeAuth + Send + Sync + 'static> ProtocolHandler for Proxy<A> {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let node_id = connection.remote_node_id()?;
         tracing::info!(node_id = ?node_id, "accept");
-        if !self.auth.allow(node_id).await {
-            tracing::warn!(node_id = ?node_id, "unauthorized_client_node");
-            return Err(AcceptError::NotAllowed {});
-        }
 
         let (mut tx, mut rx) = connection.accept_bi().await?;
 
@@ -74,11 +68,13 @@ impl<A: NodeAuth + Send + Sync + 'static> ProtocolHandler for Proxy<A> {
 
         tracing::info!(req = ?req, "tunnel_request");
 
-        if let AllowList::Only(hosts) = &self.allow_list {
-            if !hosts.iter().any(|h| h == &req.address.host) {
-                tracing::warn!(req = ?req, "rejecting_disallowed_host");
-                return Err(AcceptError::NotAllowed {});
-            }
+        if !self
+            .auth
+            .allow(node_id, &req.address.host, req.address.port)
+            .await
+        {
+            tracing::warn!(node_id = ?node_id, "unauthorized_client_node");
+            return Err(AcceptError::NotAllowed {});
         }
 
         match self.connect(req).await {

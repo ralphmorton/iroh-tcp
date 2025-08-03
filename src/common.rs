@@ -26,9 +26,3 @@ pub enum TunnelResponse {
     Connected,
     ConnectFailed,
 }
-
-#[derive(Clone, Debug)]
-pub enum AllowList {
-    All,
-    Only(Vec<Host>),
-}

@@ -1,16 +1,16 @@
 use iroh::{Endpoint, SecretKey, Watcher};
-use iroh_tcp::{Address, AllowList, Client};
+use iroh_tcp::{Address, Client};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
-use util::{ClientServer, tcp_echo};
+use util::{Allow, ClientServer, tcp_echo};
 
 mod util;
 
 #[tokio::test]
 async fn rejects_unauthorized_client() {
-    let client_server = ClientServer::new(AllowList::All).await;
+    let client_server = ClientServer::new(Allow::All).await;
     let _echo = tokio::spawn(tcp_echo(3002));
 
     let mut rng = rand::thread_rng();
